@@ -3,11 +3,10 @@
 import os
 import json
 import re
+import math
 from typing import Any
+from collections import Counter
 from openai import AsyncOpenAI
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
 
 
 def _get_client() -> AsyncOpenAI:
@@ -48,8 +47,7 @@ async def compute_match(resume_data: dict[str, Any], job_description: str) -> di
 
 
 def _keyword_analysis(resume_text: str, job_description: str) -> dict[str, Any]:
-    """Perform TF-IDF based keyword matching."""
-    # Extract meaningful keywords from job description
+    """Perform keyword overlap and lightweight cosine similarity matching."""
     job_words = set(_extract_keywords(job_description))
     resume_words = set(_extract_keywords(resume_text))
 
@@ -63,23 +61,41 @@ def _keyword_analysis(resume_text: str, job_description: str) -> dict[str, Any]:
     overlap = job_words & resume_words
     missing = job_words - resume_words
 
-    score = int((len(overlap) / len(job_words)) * 100) if job_words else 50
+    overlap_score = int((len(overlap) / len(job_words)) * 100) if job_words else 50
 
-    # Also compute TF-IDF cosine similarity
-    try:
-        vectorizer = TfidfVectorizer(stop_words="english", max_features=500)
-        tfidf_matrix = vectorizer.fit_transform([resume_text, job_description])
-        tfidf_score = float(cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:2])[0][0]) * 100
-        # Blend keyword overlap and TF-IDF
-        score = int(0.5 * score + 0.5 * tfidf_score)
-    except Exception:
-        pass
+    # Lightweight cosine similarity using term frequency
+    cosine_score = _cosine_similarity_simple(resume_text, job_description)
+
+    # Blend overlap and cosine similarity
+    score = int(0.5 * overlap_score + 0.5 * cosine_score)
 
     return {
         "keyword_score": max(0, min(100, score)),
         "overlap_keywords": sorted(list(overlap))[:30],
         "missing_keywords": sorted(list(missing))[:30],
     }
+
+
+def _cosine_similarity_simple(text_a: str, text_b: str) -> float:
+    """Compute cosine similarity using simple term frequency vectors."""
+    words_a = _extract_keywords(text_a)
+    words_b = _extract_keywords(text_b)
+
+    counter_a = Counter(words_a)
+    counter_b = Counter(words_b)
+
+    all_words = set(counter_a.keys()) | set(counter_b.keys())
+    if not all_words:
+        return 50.0
+
+    dot_product = sum(counter_a.get(w, 0) * counter_b.get(w, 0) for w in all_words)
+    mag_a = math.sqrt(sum(v * v for v in counter_a.values()))
+    mag_b = math.sqrt(sum(v * v for v in counter_b.values()))
+
+    if mag_a == 0 or mag_b == 0:
+        return 50.0
+
+    return (dot_product / (mag_a * mag_b)) * 100
 
 
 def _extract_keywords(text: str) -> list[str]:

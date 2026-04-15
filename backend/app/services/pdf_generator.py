@@ -1,55 +1,75 @@
-"""PDF generator - creates professionally formatted resume PDFs."""
+"""PDF generator - creates professionally formatted resume PDFs using fpdf2."""
 
 import os
 import tempfile
 from typing import Any
-from weasyprint import HTML
+from fpdf import FPDF
+
+
+class ResumePDF(FPDF):
+    """Custom PDF class for resume generation."""
+
+    def header(self):
+        pass
+
+    def footer(self):
+        pass
 
 
 def generate_pdf(resume_data: dict[str, Any]) -> str:
     """Generate a clean professional PDF from resume data."""
-    html_content = _build_html(resume_data)
+    pdf = ResumePDF()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+    pdf.set_margins(18, 15, 18)
 
-    temp_dir = tempfile.mkdtemp()
-    pdf_path = os.path.join(temp_dir, "optimized_resume.pdf")
+    name = resume_data.get("name", "Candidate")
+    email = resume_data.get("email", "")
+    phone = resume_data.get("phone", "")
+    summary = resume_data.get("summary", "")
+    skills = resume_data.get("skills", [])
+    experience = resume_data.get("experience", [])
+    education = resume_data.get("education", [])
+    certifications = resume_data.get("certifications", [])
 
-    HTML(string=html_content).write_pdf(pdf_path)
-    return pdf_path
+    # Name header
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.set_text_color(30, 58, 95)
+    pdf.cell(0, 10, _clean_text(name), new_x="LMARGIN", new_y="NEXT", align="C")
 
+    # Contact info
+    contact_parts = [p for p in [email, phone] if p]
+    if contact_parts:
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 5, _clean_text(" | ".join(contact_parts)), new_x="LMARGIN", new_y="NEXT", align="C")
 
-def _build_html(data: dict[str, Any]) -> str:
-    """Build HTML for the resume."""
-    name = data.get("name", "")
-    email = data.get("email", "")
-    phone = data.get("phone", "")
-    summary = data.get("summary", "")
-    skills = data.get("skills", [])
-    experience = data.get("experience", [])
-    education = data.get("education", [])
-    certifications = data.get("certifications", [])
+    # Blue divider line
+    pdf.set_draw_color(37, 99, 235)
+    pdf.set_line_width(0.5)
+    pdf.line(18, pdf.get_y() + 3, 192, pdf.get_y() + 3)
+    pdf.ln(8)
 
-    # Contact line
-    contact_parts = []
-    if email:
-        contact_parts.append(email)
-    if phone:
-        contact_parts.append(phone)
-    contact_line = " | ".join(contact_parts)
+    # Professional Summary
+    if summary:
+        _add_section_header(pdf, "PROFESSIONAL SUMMARY")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(40, 40, 40)
+        pdf.multi_cell(0, 5, _clean_text(summary))
+        pdf.ln(3)
 
-    # Skills HTML
-    skills_html = ""
+    # Skills
     if skills:
-        skill_items = ", ".join(skills) if isinstance(skills[0], str) else ", ".join(str(s) for s in skills)
-        skills_html = f"""
-        <div class="section">
-            <h2>Skills</h2>
-            <p>{skill_items}</p>
-        </div>"""
+        _add_section_header(pdf, "SKILLS")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(40, 40, 40)
+        skill_list = [str(s) for s in skills if s]
+        pdf.multi_cell(0, 5, _clean_text(", ".join(skill_list)))
+        pdf.ln(3)
 
-    # Experience HTML
-    exp_html = ""
+    # Experience
     if experience:
-        exp_items = []
+        _add_section_header(pdf, "EXPERIENCE")
         for exp in experience:
             if isinstance(exp, dict):
                 title = exp.get("title", exp.get("title_line", ""))
@@ -57,156 +77,93 @@ def _build_html(data: dict[str, Any]) -> str:
                 dates = exp.get("dates", "")
                 bullets = exp.get("bullets", [])
 
-                header = f"<h3>{title}</h3>"
-                if company:
-                    header += f"<p class='company'>{company}"
+                if title:
+                    pdf.set_font("Helvetica", "B", 10)
+                    pdf.set_text_color(30, 30, 30)
+                    pdf.cell(0, 5, _clean_text(title), new_x="LMARGIN", new_y="NEXT")
+
+                if company or dates:
+                    pdf.set_font("Helvetica", "I", 9)
+                    pdf.set_text_color(100, 100, 100)
+                    company_line = company or ""
                     if dates:
-                        header += f" | {dates}"
-                    header += "</p>"
+                        company_line += f" | {dates}" if company_line else dates
+                    pdf.cell(0, 5, _clean_text(company_line), new_x="LMARGIN", new_y="NEXT")
 
-                bullet_html = ""
-                if isinstance(bullets, list):
-                    bullet_html = "<ul>" + "".join(f"<li>{b}</li>" for b in bullets if b) + "</ul>"
-                elif isinstance(bullets, str) and bullets:
-                    bullet_lines = bullets.split("\n")
-                    bullet_html = "<ul>" + "".join(f"<li>{b}</li>" for b in bullet_lines if b.strip()) + "</ul>"
+                if bullets:
+                    pdf.set_font("Helvetica", "", 9)
+                    pdf.set_text_color(40, 40, 40)
+                    bullet_list = bullets if isinstance(bullets, list) else str(bullets).split("\n")
+                    for bullet in bullet_list:
+                        bullet = str(bullet).strip()
+                        if bullet:
+                            pdf.cell(5)
+                            pdf.multi_cell(0, 4.5, _clean_text(f"- {bullet}"))
 
-                exp_items.append(f"<div class='entry'>{header}{bullet_html}</div>")
-            else:
-                exp_items.append(f"<div class='entry'><p>{exp}</p></div>")
+                pdf.ln(2)
 
-        exp_html = f"""
-        <div class="section">
-            <h2>Experience</h2>
-            {''.join(exp_items)}
-        </div>"""
-
-    # Education HTML
-    edu_html = ""
+    # Education
     if education:
-        edu_items = []
+        _add_section_header(pdf, "EDUCATION")
         for edu in education:
             if isinstance(edu, dict):
                 degree = edu.get("degree", edu.get("degree_line", ""))
                 institution = edu.get("institution", "")
                 dates = edu.get("dates", "")
-                line = f"<h3>{degree}</h3>"
-                if institution:
-                    line += f"<p class='company'>{institution}"
+
+                if degree:
+                    pdf.set_font("Helvetica", "B", 10)
+                    pdf.set_text_color(30, 30, 30)
+                    pdf.cell(0, 5, _clean_text(degree), new_x="LMARGIN", new_y="NEXT")
+
+                if institution or dates:
+                    pdf.set_font("Helvetica", "I", 9)
+                    pdf.set_text_color(100, 100, 100)
+                    inst_line = institution or ""
                     if dates:
-                        line += f" | {dates}"
-                    line += "</p>"
-                edu_items.append(f"<div class='entry'>{line}</div>")
-            else:
-                edu_items.append(f"<div class='entry'><p>{edu}</p></div>")
+                        inst_line += f" | {dates}" if inst_line else dates
+                    pdf.cell(0, 5, _clean_text(inst_line), new_x="LMARGIN", new_y="NEXT")
 
-        edu_html = f"""
-        <div class="section">
-            <h2>Education</h2>
-            {''.join(edu_items)}
-        </div>"""
+                pdf.ln(2)
 
-    # Certifications HTML
-    cert_html = ""
+    # Certifications
     if certifications:
-        cert_items = "".join(f"<li>{c}</li>" for c in certifications if c)
-        if cert_items:
-            cert_html = f"""
-            <div class="section">
-                <h2>Certifications</h2>
-                <ul>{cert_items}</ul>
-            </div>"""
+        _add_section_header(pdf, "CERTIFICATIONS")
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(40, 40, 40)
+        for cert in certifications:
+            if cert:
+                pdf.cell(5)
+                pdf.cell(0, 5, _clean_text(f"- {str(cert)}"), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
 
-    # Summary HTML
-    summary_html = ""
-    if summary:
-        summary_html = f"""
-        <div class="section">
-            <h2>Professional Summary</h2>
-            <p>{summary}</p>
-        </div>"""
+    temp_dir = tempfile.mkdtemp()
+    pdf_path = os.path.join(temp_dir, "optimized_resume.pdf")
+    pdf.output(pdf_path)
+    return pdf_path
 
-    return f"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<style>
-    @page {{
-        margin: 0.6in 0.7in;
-        size: letter;
-    }}
-    body {{
-        font-family: 'Helvetica Neue', Arial, sans-serif;
-        font-size: 10.5pt;
-        line-height: 1.4;
-        color: #1a1a1a;
-        margin: 0;
-        padding: 0;
-    }}
-    .header {{
-        text-align: center;
-        margin-bottom: 12px;
-        padding-bottom: 8px;
-        border-bottom: 2px solid #2563eb;
-    }}
-    .header h1 {{
-        font-size: 20pt;
-        margin: 0 0 4px 0;
-        color: #1e3a5f;
-        letter-spacing: 0.5px;
-    }}
-    .header .contact {{
-        font-size: 9.5pt;
-        color: #555;
-    }}
-    .section {{
-        margin-bottom: 10px;
-    }}
-    .section h2 {{
-        font-size: 12pt;
-        color: #1e3a5f;
-        border-bottom: 1px solid #cbd5e1;
-        padding-bottom: 3px;
-        margin: 10px 0 6px 0;
-        text-transform: uppercase;
-        letter-spacing: 0.8px;
-    }}
-    .entry {{
-        margin-bottom: 8px;
-    }}
-    .entry h3 {{
-        font-size: 10.5pt;
-        margin: 0;
-        color: #1a1a1a;
-    }}
-    .company {{
-        font-size: 9.5pt;
-        color: #555;
-        margin: 1px 0 4px 0;
-        font-style: italic;
-    }}
-    ul {{
-        margin: 3px 0;
-        padding-left: 18px;
-    }}
-    li {{
-        margin-bottom: 2px;
-        font-size: 10pt;
-    }}
-    p {{
-        margin: 3px 0;
-    }}
-</style>
-</head>
-<body>
-    <div class="header">
-        <h1>{name}</h1>
-        <div class="contact">{contact_line}</div>
-    </div>
-    {summary_html}
-    {skills_html}
-    {exp_html}
-    {edu_html}
-    {cert_html}
-</body>
-</html>"""
+
+def _add_section_header(pdf: FPDF, title: str) -> None:
+    """Add a styled section header."""
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(30, 58, 95)
+    pdf.cell(0, 6, title, new_x="LMARGIN", new_y="NEXT")
+    pdf.set_draw_color(200, 213, 225)
+    pdf.set_line_width(0.3)
+    pdf.line(18, pdf.get_y(), 192, pdf.get_y())
+    pdf.ln(3)
+
+
+def _clean_text(text: str) -> str:
+    """Clean text for PDF output - replace unsupported characters."""
+    if not text:
+        return ""
+    replacements = {
+        "\u2019": "'", "\u2018": "'", "\u201c": '"', "\u201d": '"',
+        "\u2013": "-", "\u2014": "-", "\u2022": "-", "\u2026": "...",
+        "\u00a0": " ", "\u200b": "", "\u2028": " ", "\u2029": " ",
+        "\u00b7": "-", "\u25cf": "-", "\u25cb": "-", "\u25aa": "-",
+    }
+    for orig, repl in replacements.items():
+        text = text.replace(orig, repl)
+    return text.encode("latin-1", errors="replace").decode("latin-1")

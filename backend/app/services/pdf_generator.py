@@ -20,8 +20,8 @@ def generate_pdf(resume_data: dict[str, Any]) -> str:
     """Generate a clean professional PDF from resume data."""
     pdf = ResumePDF()
     pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.set_margins(15, 15, 15)
     pdf.add_page()
-    pdf.set_margins(18, 15, 18)
 
     name = resume_data.get("name", "Candidate")
     email = resume_data.get("email", "")
@@ -47,7 +47,7 @@ def generate_pdf(resume_data: dict[str, Any]) -> str:
     # Blue divider line
     pdf.set_draw_color(37, 99, 235)
     pdf.set_line_width(0.5)
-    pdf.line(18, pdf.get_y() + 3, 192, pdf.get_y() + 3)
+    pdf.line(15, pdf.get_y() + 3, 195, pdf.get_y() + 3)
     pdf.ln(8)
 
     # Professional Summary
@@ -97,8 +97,8 @@ def generate_pdf(resume_data: dict[str, Any]) -> str:
                     for bullet in bullet_list:
                         bullet = str(bullet).strip()
                         if bullet:
-                            pdf.cell(5)
-                            pdf.multi_cell(0, 4.5, _clean_text(f"- {bullet}"))
+                            pdf.set_x(pdf.l_margin)
+                            pdf.multi_cell(0, 4.5, _clean_text(f"  - {bullet}"))
 
                 pdf.ln(2)
 
@@ -150,7 +150,7 @@ def _add_section_header(pdf: FPDF, title: str) -> None:
     pdf.cell(0, 6, title, new_x="LMARGIN", new_y="NEXT")
     pdf.set_draw_color(200, 213, 225)
     pdf.set_line_width(0.3)
-    pdf.line(18, pdf.get_y(), 192, pdf.get_y())
+    pdf.line(15, pdf.get_y(), 195, pdf.get_y())
     pdf.ln(3)
 
 

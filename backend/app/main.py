@@ -1,10 +1,12 @@
 import os
+import shutil
 import tempfile
 import json
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from typing import Optional
 
 load_dotenv()
@@ -98,6 +100,15 @@ async def analyze(
             os.remove(temp_path)
 
 
+def _cleanup_temp_pdf(path: str) -> None:
+    """Remove temp PDF file and its directory after response is sent."""
+    dir_path = os.path.dirname(path)
+    if os.path.exists(path):
+        os.remove(path)
+    if os.path.exists(dir_path):
+        shutil.rmtree(dir_path, ignore_errors=True)
+
+
 @app.post("/api/download-pdf")
 async def download_pdf(
     resume_data: str = Form(...),
@@ -110,6 +121,7 @@ async def download_pdf(
             pdf_path,
             media_type="application/pdf",
             filename="optimized_resume.pdf",
+            background=BackgroundTask(_cleanup_temp_pdf, pdf_path),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

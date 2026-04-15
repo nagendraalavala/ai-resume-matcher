@@ -1,14 +1,43 @@
 """Job description scraper - extracts job descriptions from URLs."""
 
+import ipaddress
 import re
+import socket
 import requests
 from bs4 import BeautifulSoup
 from typing import Optional
+from urllib.parse import urlparse
+
+
+def _validate_url(url: str) -> None:
+    """Validate URL to prevent SSRF attacks."""
+    parsed = urlparse(url)
+
+    # Only allow http and https schemes
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("URL has no hostname")
+
+    # Resolve hostname and check for private IPs
+    try:
+        addr_infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        raise ValueError(f"Cannot resolve hostname: {hostname}")
+
+    for addr_info in addr_infos:
+        ip = ipaddress.ip_address(addr_info[4][0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            raise ValueError("URLs pointing to internal/private networks are not allowed")
 
 
 def scrape_job_url(url: str) -> Optional[str]:
     """Scrape a job description from a given URL."""
     try:
+        _validate_url(url)
+
         headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -127,8 +156,8 @@ def _clean_text(text: str) -> str:
     noise_patterns = [
         r"Sign in.*?account",
         r"Apply now.*?click",
-        r"Share this job.*",
-        r"Report this job.*",
+        r"Share this job[^\n]*",
+        r"Report this job[^\n]*",
         r"Cookie.*?policy",
     ]
     for pattern in noise_patterns:
